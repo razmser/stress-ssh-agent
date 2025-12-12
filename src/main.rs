@@ -32,7 +32,8 @@ fn ecdsa_ssh_to_der(sig_bytes: &[u8]) -> Option<Vec<u8>> {
         return None;
     }
 
-    let r_len = u32::from_be_bytes([sig_bytes[0], sig_bytes[1], sig_bytes[2], sig_bytes[3]]) as usize;
+    let r_len =
+        u32::from_be_bytes([sig_bytes[0], sig_bytes[1], sig_bytes[2], sig_bytes[3]]) as usize;
     if sig_bytes.len() < 4 + r_len + 4 {
         return None;
     }
@@ -112,8 +113,7 @@ fn verify_signature(
             let pubkey_bytes = ecdsa_key.as_sec1_bytes();
 
             // Convert signature from SSH mpint format to DER
-            let der_sig =
-                ecdsa_ssh_to_der(sig_bytes).ok_or("Failed to parse ECDSA signature")?;
+            let der_sig = ecdsa_ssh_to_der(sig_bytes).ok_or("Failed to parse ECDSA signature")?;
 
             let result = UnparsedPublicKey::new(algorithm, pubkey_bytes).verify(data, &der_sig);
             Ok(result.is_ok())
@@ -131,10 +131,7 @@ fn verify_signature(
             let _ = rsa_key;
             Err("RSA signature verification not implemented".to_string())
         }
-        _ => Err(format!(
-            "Unsupported key type: {}",
-            public_key.algorithm()
-        )),
+        _ => Err(format!("Unsupported key type: {}", public_key.algorithm())),
     }
 }
 
@@ -242,9 +239,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         for i in 0..args.parallel {
             let sock = ssh_auth_sock.clone();
             let pubkey_clone = Arc::clone(&public_key);
-            let handle = task::spawn(async move {
-                sign_and_verify_task(sock, (*pubkey_clone).clone(), i).await
-            });
+            let handle =
+                task::spawn(
+                    async move { sign_and_verify_task(sock, (*pubkey_clone).clone(), i).await },
+                );
             handles.push(handle);
         }
 
