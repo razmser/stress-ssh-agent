@@ -148,15 +148,15 @@ histogram and tallying outcomes; `main` merges results and prints the report.
 - Create: `src/metrics.rs` (stub)
 - Modify: `src/main.rs` (temporary thin shim that still compiles)
 
-- [ ] rename `package.name` to `stress-ssh-agent`; keep `[[bin]] name = "stress-ssh-agent"`; add `[lib]` (crate `stress_ssh_agent`)
-- [ ] Cargo deps: remove `aws-lc-rs`; add stable versions compatible with `ssh-key 0.6.7` (which uses `signature 2.x` / `digest 0.10`): `p256 = "0.13"`, `p384 = "0.13"`, `p521 = "0.13"` (feature `ecdsa`), `ed25519-dalek = "2"`, `rsa = "0.9"`, `signature = "2"`, `hdrhistogram`, and `sha1 = { version = "0.10", features = ["oid"] }` + `sha2 = { version = "0.10", features = ["oid"] }` (the `oid` feature is **required** or the RSA pkcs1v15 `VerifyingKey::new` bound `AssociatedOid` is unsatisfied and the build fails)
-- [ ] enable `ssh-key`'s `p256`/`p384`/`p521` features so its `TryFrom<&Signature> for {curve}::ecdsa::Signature` impls are available (lets Task 2 skip hand-rolled mpint parsing)
-- [ ] do **not** copy "latest" from `cargo search` — several of these only surface pre-release majors (`rsa 0.10-rc`, `ed25519-dalek 3.0-rc`, `p521 0.14-rc`) that won't resolve against `ssh-key 0.6.7`; pin the stable versions above
-- [ ] `ssh-encoding`: change the pin from `0.1` to `0.2` to match `ssh-key 0.6.7` — or drop it and use `ssh_key`'s re-exported `Mpint` directly (preferred; avoids a second copy)
-- [ ] trim `tokio` to the minimal feature set (`rt-multi-thread`, `macros`, `time`, `sync`) — confirm against actual usage, widen only if the build needs it
-- [ ] create `src/lib.rs` declaring `pub mod verify; pub mod cli; pub mod worker; pub mod metrics;`
-- [ ] add module stubs so the workspace compiles; reduce `main.rs` to a temporary shim calling into stubs
-- [ ] `cargo x ci` compiles (clippy clean, fmt clean); real tests arrive in Task 2 (no placeholder test)
+- [x] rename `package.name` to `stress-ssh-agent`; keep `[[bin]] name = "stress-ssh-agent"`; add `[lib]` (crate `stress_ssh_agent`)
+- [x] Cargo deps: remove `aws-lc-rs`; add stable versions compatible with `ssh-key 0.6.7` (which uses `signature 2.x` / `digest 0.10`): `p256 = "0.13"`, `p384 = "0.13"`, `p521 = "0.13"` (feature `ecdsa`), `ed25519-dalek = "2"`, `rsa = "0.9"`, `signature = "2"`, `hdrhistogram`, and `sha1 = { version = "0.10", features = ["oid"] }` + `sha2 = { version = "0.10", features = ["oid"] }` (the `oid` feature is **required** or the RSA pkcs1v15 `VerifyingKey::new` bound `AssociatedOid` is unsatisfied and the build fails)
+- [x] enable `ssh-key`'s `p256`/`p384`/`p521` features so its `TryFrom<&Signature> for {curve}::ecdsa::Signature` impls are available (lets Task 2 skip hand-rolled mpint parsing)
+- [x] do **not** copy "latest" from `cargo search` — several of these only surface pre-release majors (`rsa 0.10-rc`, `ed25519-dalek 3.0-rc`, `p521 0.14-rc`) that won't resolve against `ssh-key 0.6.7`; pin the stable versions above
+- [x] `ssh-encoding`: change the pin from `0.1` to `0.2` to match `ssh-key 0.6.7` — or drop it and use `ssh_key`'s re-exported `Mpint` directly (preferred; avoids a second copy)
+- [x] trim `tokio` to the minimal feature set (`rt-multi-thread`, `macros`, `time`, `sync`) — confirm against actual usage, widen only if the build needs it
+- [x] create `src/lib.rs` declaring `pub mod verify; pub mod cli; pub mod worker; pub mod metrics;`
+- [x] add module stubs so the workspace compiles; reduce `main.rs` to a temporary shim calling into stubs
+- [x] `cargo x ci` compiles (clippy clean, fmt clean); real tests arrive in Task 2 (no placeholder test)
 
 ### Task 2: Verification core (`verify.rs`) + full test suite
 
