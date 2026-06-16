@@ -224,13 +224,13 @@ histogram and tallying outcomes; `main` merges results and prints the report.
 **Files:**
 - Modify: `src/main.rs`
 
-- [ ] parse `Args`; read `SSH_AUTH_SOCK` (clear error if unset instead of bare panic)
-- [ ] connect, enumerate + select identities; handle `--list` (print + exit 0); empty supported set → print skipped + exit 1
-- [ ] print run header; assign keys to workers (round-robin for `--all`); arm deadline via `tokio::time::sleep_until` that flips the shared stop flag
-- [ ] spawn `parallel` workers, each handed a clone of a shared `Arc<AtomicU64>` op counter; on deadline, join all, merge `WorkerStats`
-- [ ] ~1Hz stderr progress line driven by the shared `Arc<AtomicU64>` counter (running ops/s + error count) — the only mid-run shared state; per-worker `WorkerStats` are still merged only at the end
-- [ ] print final report; `std::process::exit(1)` when `should_exit_nonzero()` or no usable key, else 0
-- [ ] `cargo x ci` passes
+- [x] parse `Args`; read `SSH_AUTH_SOCK` (clear error if unset instead of bare panic)
+- [x] connect, enumerate + select identities; handle `--list` (print + exit 0); empty supported set → print skipped + exit 1
+- [x] print run header; assign keys to workers (round-robin for `--all`); arm deadline via `tokio::time::sleep_until` that flips the shared stop flag
+- [x] spawn `parallel` workers, each handed a clone of a shared `Arc<AtomicU64>` op counter; on deadline, join all, merge `WorkerStats`
+- [x] ~1Hz stderr progress line driven by the shared `Arc<AtomicU64>` counter (running ops/s + error count) — the only mid-run shared state; per-worker `WorkerStats` are still merged only at the end
+- [x] print final report; `std::process::exit(1)` when `should_exit_nonzero()` or no usable key, else 0
+- [x] `cargo x ci` passes
 
 ### Task 7: Verify acceptance criteria
 
