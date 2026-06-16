@@ -185,13 +185,13 @@ histogram and tallying outcomes; `main` merges results and prints the report.
 - Modify: `src/cli.rs`
 - Modify: `tests/verify.rs` (or add `tests/cli.rs`)
 
-- [ ] define `Args` (clap derive): `-p/--parallel` (default 1), `-t/--timeout` secs (default 60), `--reconnect`, `--key <FINGERPRINT>`, `--all`, `--list`
-- [ ] implement identity enumeration over `list_all_identities()`; classify each as supported (ECDSA P-256/384/521, Ed25519, RSA) or skipped (cert/unknown) with reason
-- [ ] implement selection: `--key` matches one by SHA256 fingerprint or comment (error if no match); `--all` → all supported; neither → first supported
-- [ ] return an owned `Vec<PublicKey>` target set + a list of skipped identities (for warnings); empty supported set is a distinct error variant
-- [ ] `--list` path: format identities (algo, fingerprint, comment, supported?) for printing, then caller exits 0
-- [ ] write unit tests for selection logic over a synthetic identity list (first/`--key`/`--all`/no-match/empty) — keep pure/testable by separating parsing from the live `Client`
-- [ ] `cargo x ci` passes
+- [x] define `Args` (clap derive): `-p/--parallel` (default 1), `-t/--timeout` secs (default 60), `--reconnect`, `--key <FINGERPRINT>`, `--all`, `--list`
+- [x] implement identity enumeration over `list_all_identities()`; classify each as supported (ECDSA P-256/384/521, Ed25519, RSA) or skipped (cert/unknown) with reason
+- [x] implement selection: `--key` matches one by SHA256 fingerprint or comment (error if no match); `--all` → all supported; neither → first supported
+- [x] return an owned `Vec<PublicKey>` target set + a list of skipped identities (for warnings); empty supported set is a distinct error variant
+- [x] `--list` path: format identities (algo, fingerprint, comment, supported?) for printing, then caller exits 0
+- [x] write unit tests for selection logic over a synthetic identity list (first/`--key`/`--all`/no-match/empty) — keep pure/testable by separating parsing from the live `Client`
+- [x] `cargo x ci` passes
 
 ### Task 4: Metrics (`metrics.rs`)
 
