@@ -13,10 +13,11 @@
 //!
 //! RSA reality (informational; nothing to configure here):
 //! `ssh-agent-client-rs 1.1.2`'s `sign` exposes no algorithm flag, so we cannot
-//! request `rsa-sha2-256`/`512`. An agent that signs an RSA key with `ssh-rsa`
-//! (SHA-1) returns a signature that `ssh-key` cannot decode (its
-//! `Signature::decode` rejects `Algorithm::Rsa { hash: None }`), so the client's
-//! `sign` errors at the decode layer and the attempt is recorded as a
+//! request `rsa-sha2-256`/`512`. So if an agent signs an RSA key with `ssh-rsa`
+//! (SHA-1), we expect — inferred from `ssh-key` 0.6.7's decode constraints, not
+//! observed against a live agent — the client's `sign` to error at the decode
+//! layer: `ssh-key`'s `Signature::decode` rejects `Algorithm::Rsa { hash: None }`,
+//! and the client shares that decode. Such an attempt would be recorded as a
 //! [`VerifyOutcome::SignError`] (counted as a failure). The verify-side hash
 //! selection lives in `verify.rs`; there is no flag to set here.
 
