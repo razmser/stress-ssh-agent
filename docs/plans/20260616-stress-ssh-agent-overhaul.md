@@ -245,9 +245,9 @@ histogram and tallying outcomes; `main` merges results and prints the report.
 - Modify: `README.md`
 - Modify: `CLAUDE.md`
 
-- [ ] README: update features (RSA now verified, P-521 fixed), CLI flags (`--reconnect`/`--key`/`--all`/`--list`), new example output with latency percentiles
-- [ ] CLAUDE.md: update Architecture (RustCrypto verification, closed-loop workers, connection modes, metrics, module layout), Commands/Running (package name, new flags), remove the stale "single-file binary" / `ecdsa_ssh_to_der` / "RSA not implemented" notes
-- [ ] move this plan to `docs/plans/completed/`
+- [x] README: update features (RSA now verified, P-521 fixed), CLI flags (`--reconnect`/`--key`/`--all`/`--list`), new example output with latency percentiles
+- [x] CLAUDE.md: update Architecture (RustCrypto verification, closed-loop workers, connection modes, metrics, module layout), Commands/Running (package name, new flags), remove the stale "single-file binary" / `ecdsa_ssh_to_der` / "RSA not implemented" notes
+- [x] move this plan to `docs/plans/completed/`
 
 ## Post-Completion
 
