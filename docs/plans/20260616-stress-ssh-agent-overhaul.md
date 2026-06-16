@@ -234,10 +234,10 @@ histogram and tallying outcomes; `main` merges results and prints the report.
 
 ### Task 7: Verify acceptance criteria
 
-- [ ] all review findings addressed: P-521 fixed, RSA verified (not false-failed), tests exist, `ssh-encoding` used, closed-loop workers, connection modes, latency metrics, empty-identity exit 1, package renamed, no per-op Arc deep-clone
-- [ ] confirm no `aws-lc-rs` and no hand-rolled DER remain (`ecdsa_ssh_to_der` deleted)
-- [ ] run full suite: `cargo x ci`
-- [ ] each source file < 300 lines
+- [x] all review findings addressed: P-521 fixed, RSA verified (not false-failed), tests exist, `ssh-encoding` used, closed-loop workers, connection modes, latency metrics, empty-identity exit 1, package renamed, no per-op Arc deep-clone
+- [x] confirm no `aws-lc-rs` and no hand-rolled DER remain (`ecdsa_ssh_to_der` deleted)
+- [x] run full suite: `cargo x ci`
+- [x] each source file < 300 lines
 
 ### Task 8: Documentation
 
