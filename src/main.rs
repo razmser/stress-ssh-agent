@@ -144,15 +144,22 @@ async fn run() -> Result<ExitCode, String> {
     // joins so the tool still terminates and reports; a worker that is still
     // mid-sign past the grace period is abandoned (its in-flight op is lost).
     let mut aggregate = WorkerStats::new();
+    let mut any_worker_abandoned = false;
     for handle in handles {
         match tokio::time::timeout(JOIN_GRACE, handle).await {
             Ok(Ok(stats)) => aggregate.merge(&stats),
-            Ok(Err(e)) => eprintln!("warning: worker task failed: {e}"),
-            Err(_) => eprintln!(
-                "warning: worker did not finish within {}s of the deadline \
-                 (agent likely hung mid-sign); abandoning it",
-                JOIN_GRACE.as_secs()
-            ),
+            Ok(Err(e)) => {
+                any_worker_abandoned = true;
+                eprintln!("warning: worker task failed: {e}");
+            }
+            Err(_) => {
+                any_worker_abandoned = true;
+                eprintln!(
+                    "warning: worker did not finish within {}s of the deadline \
+                     (agent likely hung mid-sign); abandoning it",
+                    JOIN_GRACE.as_secs()
+                );
+            }
         }
     }
 
@@ -162,7 +169,7 @@ async fn run() -> Result<ExitCode, String> {
         aggregate.report(&algorithm_desc, args.parallel, args.reconnect, elapsed)
     );
 
-    if aggregate.should_exit_nonzero() {
+    if aggregate.should_exit_nonzero() || any_worker_abandoned {
         Ok(ExitCode::FAILURE)
     } else {
         Ok(ExitCode::SUCCESS)
