@@ -60,7 +60,8 @@ stress-ssh-agent --parallel 10 --timeout 120   # -p / -t
   cost) instead of the default persistent connection per worker.
 - `--key <FINGERPRINT>` — select one identity by SHA256 fingerprint or by comment
   (substring match).
-- `--all` — use all supported identities, round-robin across workers.
+- `--all` — use all supported identities; every worker cycles through them
+  round-robin (one key per iteration).
 - `--list` — enumerate identities (algorithm, fingerprint, comment, supported or
   skip reason) and exit.
 
@@ -119,8 +120,9 @@ final report go to stderr and stdout respectively.
 2. Classifies each identity; certificates and unknown key types are skipped with
    a warning. If no supported key remains, it exits `1`.
 3. Selects the target key set: the first supported key by default, one specific
-   key with `--key`, or all supported keys with `--all` (round-robin across
-   workers).
+   key with `--key`, or all supported keys with `--all`. Every worker is handed
+   the full selected set and cycles through it round-robin, one key per
+   iteration (with a single key, that key every iteration).
 4. Spawns `--parallel` closed-loop workers. Each worker signs 32 random bytes in
    a tight loop until a shared deadline/stop flag flips, reusing one persistent
    connection (or reconnecting per sign with `--reconnect`).

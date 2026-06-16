@@ -23,7 +23,7 @@ Requires `SSH_AUTH_SOCK` set and at least one supported identity loaded in the s
 stress-ssh-agent -p 10 -t 120          # 10 workers, 120s (-p/--parallel, -t/--timeout; defaults 1, 60)
 stress-ssh-agent --list                # enumerate identities and exit 0
 stress-ssh-agent --key <FINGERPRINT>   # one identity by SHA256 fingerprint or comment substring
-stress-ssh-agent --all                 # all supported identities, round-robin across workers
+stress-ssh-agent --all                 # all supported identities, every worker cycles through them
 stress-ssh-agent --reconnect           # fresh connection per sign (default: persistent per worker)
 ```
 
@@ -42,7 +42,7 @@ Integration tests in `tests/verify.rs` exercise the public `verify_signature` AP
 
 ### Main loop
 
-`main` connects, enumerates identities, selects the target key set, then spawns `--parallel` workers via `tokio::task::spawn_blocking` (the `ssh-agent-client-rs` client is blocking). Each worker is handed one assigned key and runs a closed loop: sign 32 random bytes, time the sign call, verify, and record into a local `WorkerStats`, until a shared deadline/stop flag (`AtomicBool`) flips. A separate tokio task arms the deadline; a ~1Hz stderr progress line is driven off a shared `Arc<AtomicU64>` op counter. On stop, `main` joins the workers and merges their `WorkerStats` before printing the report. With `--all`, the selected keys are assigned round-robin across workers.
+`main` connects, enumerates identities, selects the target key set, then spawns `--parallel` workers via `tokio::task::spawn_blocking` (the `ssh-agent-client-rs` client is blocking). Every worker is handed the full selected key set and runs a closed loop: cycle to the next key (round-robin, one key per iteration), sign 32 random bytes, time the sign call, verify, and record into a local `WorkerStats`, until a shared deadline/stop flag (`AtomicBool`) flips. A separate tokio task arms the deadline; a ~1Hz stderr progress line is driven off a shared `Arc<AtomicU64>` op counter. On stop, `main` joins the workers and merges their `WorkerStats` before printing the report. With `--all`, every worker exercises every selected key; by default a single key is used, so each iteration signs with that key.
 
 Connection modes: persistent (default) connects once per worker and reuses the `Client`; `--reconnect` opens a fresh `Client::connect` per sign. Connect/sign errors are recorded as `SignError` and counted as completed ops.
 
