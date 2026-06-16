@@ -29,3 +29,16 @@ signature = "2"
 sha1 = { version = "0.10", features = ["oid"] }
 sha2 = { version = "0.10", features = ["oid"] }
 hdrhistogram = "7"
+
+[dev-dependencies]
+p256 = { version = "0.13", features = ["ecdsa"] }
+p384 = { version = "0.13", features = ["ecdsa"] }
+p521 = { version = "0.13", features = ["ecdsa"] }
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rsa = "0.9"
+signature = "2"
+sha1 = { version = "0.10", features = ["oid"] }
+sha2 = { version = "0.10", features = ["oid"] }
+ssh-key = { version = "0.6", features = ["p256", "p384", "p521"] }
+rand = "0.8"
+rand_core = "0.6"

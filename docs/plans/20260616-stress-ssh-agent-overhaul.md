@@ -165,19 +165,19 @@ histogram and tallying outcomes; `main` merges results and prints the report.
 - Modify: `tests/verify.rs`
 - Modify: `Cargo.toml` (`[dev-dependencies]`)
 
-- [ ] add `[dev-dependencies]` for in-process keygen/signing in tests: `p256`/`p384`/`p521` with `features = ["ecdsa"]` (that single feature pulls arithmetic + signing + the curve digest, so P-521 signing works), `ed25519-dalek` (feature `rand_core`), `rsa` building a `pkcs1v15::SigningKey::<Sha256/Sha512/Sha1>` (reuse the `oid`-featured `sha1`/`sha2` from Task 1), and `rand` for key generation; reuse the same major versions pinned in Task 1
-- [ ] define `pub enum VerifyOutcome { Verified, BadSignature, SignError(String), Unsupported(String) }`
-- [ ] implement `pub fn verify_signature(public_key: &ssh_key::PublicKey, data: &[u8], signature: &ssh_key::Signature) -> VerifyOutcome`
-- [ ] ECDSA branch: SEC1 verifying key + convert the signature via `ssh_key`'s built-in `TryFrom<&Signature> for {p256,p384,p521}::ecdsa::Signature` (failed `try_from` → `BadSignature`); verify. Fallback (only if that impl is unavailable): parse mpints, `as_positive_bytes()` (returns `Option`; `None` → `BadSignature`) then left-pad to field size + `from_scalars`. Either way, all hand-rolled DER is gone (`ecdsa_ssh_to_der` deleted)
-- [ ] Ed25519 branch: `from_bytes`/`from_slice`/verify
-- [ ] RSA branch: `RsaPublicKey` from `n`/`e`; select hash from signature algo name (`rsa-sha2-256`/`rsa-sha2-512`/`ssh-rsa`); `pkcs1v15::VerifyingKey::<H>` verify
-- [ ] map results: valid→`Verified`, invalid→`BadSignature`, unparseable→`BadSignature` (never panic); unknown key type→`Unsupported`
-- [ ] add a helper in tests to synthesize the SSH signature blob (mpint `r‖s` framing) wrapped in `ssh_key::Signature`
-- [ ] write round-trip tests: P-256, P-384, P-521, Ed25519, RSA-SHA256, RSA-SHA512, RSA-SHA1 → assert `Verified`
-- [ ] write **P-521 regression test** (DER would exceed the 127-byte short-form boundary) → assert `Verified`
-- [ ] write edge-case tests: ECDSA r/s with high bit set (would-be negative) and with leading zero bytes → assert `Verified`
-- [ ] write negative tests: flipped byte → `BadSignature`; truncated/empty blob → `BadSignature`/error, no panic; wrong key → `BadSignature`
-- [ ] `cargo x ci` — all verification tests pass before next task
+- [x] add `[dev-dependencies]` for in-process keygen/signing in tests: `p256`/`p384`/`p521` with `features = ["ecdsa"]` (that single feature pulls arithmetic + signing + the curve digest, so P-521 signing works), `ed25519-dalek` (feature `rand_core`), `rsa` building a `pkcs1v15::SigningKey::<Sha256/Sha512/Sha1>` (reuse the `oid`-featured `sha1`/`sha2` from Task 1), and `rand` for key generation; reuse the same major versions pinned in Task 1
+- [x] define `pub enum VerifyOutcome { Verified, BadSignature, SignError(String), Unsupported(String) }`
+- [x] implement `pub fn verify_signature(public_key: &ssh_key::PublicKey, data: &[u8], signature: &ssh_key::Signature) -> VerifyOutcome`
+- [x] ECDSA branch: SEC1 verifying key + convert the signature via `ssh_key`'s built-in `TryFrom<&Signature> for {p256,p384,p521}::ecdsa::Signature` (failed `try_from` → `BadSignature`); verify. Fallback (only if that impl is unavailable): parse mpints, `as_positive_bytes()` (returns `Option`; `None` → `BadSignature`) then left-pad to field size + `from_scalars`. Either way, all hand-rolled DER is gone (`ecdsa_ssh_to_der` deleted)
+- [x] Ed25519 branch: `from_bytes`/`from_slice`/verify
+- [x] RSA branch: `RsaPublicKey` from `n`/`e`; select hash from signature algo name (`rsa-sha2-256`/`rsa-sha2-512`/`ssh-rsa`); `pkcs1v15::VerifyingKey::<H>` verify
+- [x] map results: valid→`Verified`, invalid→`BadSignature`, unparseable→`BadSignature` (never panic); unknown key type→`Unsupported`
+- [x] add a helper in tests to synthesize the SSH signature blob (mpint `r‖s` framing) wrapped in `ssh_key::Signature`
+- [x] write round-trip tests: P-256, P-384, P-521, Ed25519, RSA-SHA256, RSA-SHA512 → assert `Verified`. NOTE: RSA-SHA1 (`ssh-rsa`) round-trip is **not constructible** with `ssh-key 0.6.7`: its `Signature::decode`/`new` reject `Algorithm::Rsa { hash: None }` (only `Some(_)` accepted) and the agent client uses the same decode, so an `ssh-rsa` signature can never reach `verify_signature`. The SHA-1 hash-selection branch is still implemented as correct defensive code; the limitation is documented in `tests/verify.rs`.
+- [x] write **P-521 regression test** (DER would exceed the 127-byte short-form boundary) → assert `Verified`
+- [x] write edge-case tests: ECDSA r/s with high bit set (would-be negative) and with leading zero bytes → assert `Verified`
+- [x] write negative tests: flipped byte → `BadSignature`; truncated/empty blob → `BadSignature`/error, no panic; wrong key → `BadSignature`
+- [x] `cargo x ci` — all verification tests pass before next task
 
 ### Task 3: CLI + identity selection (`cli.rs`)
 
