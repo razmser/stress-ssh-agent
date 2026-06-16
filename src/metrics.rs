@@ -164,6 +164,26 @@ mod tests {
     }
 
     #[test]
+    fn record_latency_clamps_extremes() {
+        let mut s = WorkerStats::new();
+        // Sub-µs latency clamps up to the 1µs low bound; an over-60s latency
+        // clamps down to the high bound. Neither errors, both are counted.
+        s.record(&VerifyOutcome::Verified, Duration::ZERO);
+        s.record(&VerifyOutcome::Verified, Duration::from_secs(120));
+
+        // The key property: recording both extremes was counted and did not
+        // error (an unclamped 0µs or 120s record would have).
+        assert_eq!(s.verified, 2);
+        assert_eq!(s.hist.len(), 2);
+        // The 0µs sample was clamped up to the 1µs low bound.
+        assert!(s.hist.min() >= HIST_LOW);
+        // The 120s sample was clamped down to the 60s high bound, so the max
+        // bucket sits at the high bound (within HDR's bucket-width tolerance),
+        // not at 120s.
+        assert!(s.hist.equivalent(s.hist.max(), HIST_HIGH));
+    }
+
+    #[test]
     fn merge_sums_counters_and_histograms() {
         let mut a = WorkerStats::new();
         a.record(&VerifyOutcome::Verified, micros(1000));

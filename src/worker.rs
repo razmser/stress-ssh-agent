@@ -45,6 +45,10 @@ fn should_stop(stop: &AtomicBool, deadline: Instant, now: Instant) -> bool {
 /// arguments so the closure is `'static`. Returns the worker's local
 /// [`WorkerStats`] for the caller to merge.
 ///
+/// `keys` is the full set of keys this worker should exercise; the worker
+/// rotates through them round-robin, one per iteration. This guarantees every
+/// selected key is actually tested even with a single worker (`-p 1 --all`).
+///
 /// Connection model:
 /// - persistent (`reconnect == false`): connect once and reuse the `Client`.
 ///   If the persistent client errors mid-loop, we record a `SignError` and try
@@ -58,7 +62,7 @@ fn should_stop(stop: &AtomicBool, deadline: Instant, now: Instant) -> bool {
 /// (so ops/s reflects attempted work), then the loop continues.
 pub fn run_worker(
     sock: PathBuf,
-    public_key: ssh_key::PublicKey,
+    keys: Vec<ssh_key::PublicKey>,
     reconnect: bool,
     deadline: Instant,
     stop: Arc<AtomicBool>,
@@ -67,27 +71,24 @@ pub fn run_worker(
     let mut stats = WorkerStats::new();
     let mut rng = rand::thread_rng();
 
-    // Persistent mode: connect once up front. A failure here is recorded; the
-    // loop will retry connecting each iteration via `persistent`.
-    let mut persistent: Option<Client> = if reconnect {
-        None
-    } else {
-        match Client::connect(&sock) {
-            Ok(client) => Some(client),
-            Err(e) => {
-                stats.record(
-                    &VerifyOutcome::SignError(format!("connect: {e}")),
-                    std::time::Duration::ZERO,
-                );
-                None
-            }
-        }
-    };
+    // Pre-build one Identity per key so the per-iteration hot loop does not
+    // clone the key + rebuild the Identity each time.
+    let identities: Vec<Identity> = keys.iter().cloned().map(Identity::from).collect();
+    let mut key_idx = 0usize;
+
+    // Persistent client, established lazily on the first iteration (and after
+    // any mid-loop error) by the `persistent.is_none()` block below.
+    let mut persistent: Option<Client> = None;
 
     loop {
         if should_stop(&stop, deadline, Instant::now()) {
             break;
         }
+
+        // Round-robin to the next key for this iteration.
+        let public_key = &keys[key_idx];
+        let identity = &identities[key_idx];
+        key_idx = (key_idx + 1) % keys.len();
 
         let mut data = [0u8; SIGN_BYTES];
         rng.fill_bytes(&mut data);
@@ -127,15 +128,15 @@ pub fn run_worker(
             persistent.as_mut().expect("just ensured Some")
         };
 
-        // Time the sign call only.
-        let identity = Identity::from(public_key.clone());
+        // Time the sign call only. `sign_with_ref` borrows the pre-built
+        // Identity, so the hot loop neither clones the key nor the Identity.
         let t0 = Instant::now();
-        let sign_result = client.sign(identity, &data);
+        let sign_result = client.sign_with_ref(identity, &data);
         let elapsed = t0.elapsed();
 
         match sign_result {
             Ok(sig) => {
-                let outcome = verify_signature(&public_key, &data, &sig);
+                let outcome = verify_signature(public_key, &data, &sig);
                 stats.record(&outcome, elapsed);
             }
             Err(e) => {

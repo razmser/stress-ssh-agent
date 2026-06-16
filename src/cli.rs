@@ -13,8 +13,13 @@ use ssh_key::{HashAlg, PublicKey};
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
-    /// Number of parallel signing workers.
-    #[arg(short = 'p', long = "parallel", default_value_t = 1)]
+    /// Number of parallel signing workers (must be >= 1).
+    #[arg(
+        short = 'p',
+        long = "parallel",
+        default_value_t = 1,
+        value_parser = parse_parallel
+    )]
     pub parallel: usize,
 
     /// Run duration in seconds.
@@ -26,16 +31,26 @@ pub struct Args {
     pub reconnect: bool,
 
     /// Select one identity by SHA256 fingerprint or comment.
-    #[arg(long = "key")]
+    #[arg(long = "key", conflicts_with = "all")]
     pub key: Option<String>,
 
-    /// Use all supported identities (round-robin across workers).
+    /// Use all supported identities (each worker rotates through them).
     #[arg(long = "all", default_value_t = false)]
     pub all: bool,
 
     /// List identities and exit.
     #[arg(long = "list", default_value_t = false)]
     pub list: bool,
+}
+
+/// Parse `--parallel`, rejecting `0` (which would spawn no workers and idle the
+/// whole timeout, exiting `0` as a misleading no-op success).
+fn parse_parallel(s: &str) -> Result<usize, String> {
+    let n: usize = s.parse().map_err(|_| format!("`{s}` is not a number"))?;
+    if n == 0 {
+        return Err("must be at least 1".to_string());
+    }
+    Ok(n)
 }
 
 /// Owned, agent-independent view of one identity returned by the agent.
@@ -151,6 +166,9 @@ pub fn select(infos: &[IdentityInfo], args: &Args) -> Result<Vec<PublicKey>, Sel
     }
 
     if let Some(query) = &args.key {
+        // `find` returns the FIRST supported identity whose fingerprint equals
+        // `query` or whose comment contains it. With several comment matches the
+        // first (in agent enumeration order) wins, deterministically.
         let matched = supported
             .iter()
             .find(|i| &i.fingerprint() == query || i.comment().contains(query.as_str()))
