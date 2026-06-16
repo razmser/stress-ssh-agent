@@ -199,12 +199,12 @@ histogram and tallying outcomes; `main` merges results and prints the report.
 - Modify: `src/metrics.rs`
 - Modify: `tests/verify.rs` (or add `tests/metrics.rs`)
 
-- [ ] define `WorkerStats { hist: Histogram<u64>, verified, bad_signature, sign_error }` with a `record(outcome, sign_latency)` method and a `merge(&mut self, other)`
-- [ ] implement histogram init (1µs–60s, 3 sig figs) and microsecond recording for sign latency only
-- [ ] implement final report formatter: algorithm(s), workers, connection mode, duration, total ops + ops/s, verified/bad-signature/sign-error, p50/p90/p99/p99.9/max in ms
-- [ ] implement `should_exit_nonzero()` = `bad_signature + sign_error > 0`
-- [ ] write tests: merge of two stats sums counters and combines histograms; percentile/report formatting on a known sample set; exit-code predicate
-- [ ] `cargo x ci` passes
+- [x] define `WorkerStats { hist: Histogram<u64>, verified, bad_signature, sign_error }` with a `record(outcome, sign_latency)` method and a `merge(&mut self, other)`
+- [x] implement histogram init (1µs–60s, 3 sig figs) and microsecond recording for sign latency only
+- [x] implement final report formatter: algorithm(s), workers, connection mode, duration, total ops + ops/s, verified/bad-signature/sign-error, p50/p90/p99/p99.9/max in ms
+- [x] implement `should_exit_nonzero()` = `bad_signature + sign_error > 0`
+- [x] write tests: merge of two stats sums counters and combines histograms; percentile/report formatting on a known sample set; exit-code predicate
+- [x] `cargo x ci` passes
 
 ### Task 5: Closed-loop worker (`worker.rs`)
 
