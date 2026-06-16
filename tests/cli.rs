@@ -3,6 +3,7 @@
 //! Exercises the pure selection/classification logic over synthetic identity
 //! lists, so no live agent is needed.
 
+use clap::Parser;
 use ssh_key::public::{Ed25519PublicKey, KeyData};
 use ssh_key::PublicKey;
 use stress_ssh_agent::cli::{
@@ -66,6 +67,38 @@ fn select_by_comment_substring() {
     let selected = select(&infos, &a).expect("select");
     assert_eq!(selected.len(), 1);
     assert_eq!(selected[0].comment(), "bob@host");
+}
+
+#[test]
+fn select_by_comment_multi_match_is_deterministic() {
+    // Two identities whose comments both contain "host"; the first in
+    // enumeration order must win, deterministically.
+    let infos = vec![
+        ed25519_identity(1, "alice@host"),
+        ed25519_identity(2, "bob@host"),
+    ];
+    let mut a = args();
+    a.key = Some("host".to_string());
+    let selected = select(&infos, &a).expect("select");
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0].comment(), "alice@host");
+}
+
+#[test]
+fn key_and_all_are_mutually_exclusive() {
+    // clap must reject `--key` together with `--all`.
+    let result = Args::try_parse_from(["prog", "--key", "x", "--all"]);
+    assert!(result.is_err(), "expected --key + --all to conflict");
+}
+
+#[test]
+fn parallel_zero_is_rejected() {
+    // `--parallel 0` would idle and exit 0; clap must reject it.
+    let result = Args::try_parse_from(["prog", "--parallel", "0"]);
+    assert!(result.is_err(), "expected --parallel 0 to be rejected");
+    // A positive value is accepted.
+    let ok = Args::try_parse_from(["prog", "--parallel", "4"]).expect("parse");
+    assert_eq!(ok.parallel, 4);
 }
 
 #[test]

@@ -53,41 +53,27 @@ fn verify_ecdsa(
     // For each curve: build the SEC1 verifying key, then convert the SSH
     // signature (mpint-framed r||s) into the curve's ecdsa::Signature using
     // ssh-key's built-in TryFrom impl. The Verifier hashes with the curve's
-    // digest (P-256→SHA-256, P-384→SHA-384, P-521→SHA-512).
+    // digest (P-256→SHA-256, P-384→SHA-384, P-521→SHA-512). The arms differ
+    // only in the curve module path, so a local macro keeps them in lockstep.
+    let sec1 = key.as_sec1_bytes();
+    macro_rules! verify_curve {
+        ($curve:path) => {{
+            use $curve as curve;
+            let vk = match curve::ecdsa::VerifyingKey::from_sec1_bytes(sec1) {
+                Ok(vk) => vk,
+                Err(_) => return VerifyOutcome::BadSignature,
+            };
+            let sig = match curve::ecdsa::Signature::try_from(signature) {
+                Ok(sig) => sig,
+                Err(_) => return VerifyOutcome::BadSignature,
+            };
+            outcome(vk.verify(data, &sig).is_ok())
+        }};
+    }
     match key {
-        EcdsaPublicKey::NistP256(_) => {
-            let vk = match p256::ecdsa::VerifyingKey::from_sec1_bytes(key.as_sec1_bytes()) {
-                Ok(vk) => vk,
-                Err(_) => return VerifyOutcome::BadSignature,
-            };
-            let sig = match p256::ecdsa::Signature::try_from(signature) {
-                Ok(sig) => sig,
-                Err(_) => return VerifyOutcome::BadSignature,
-            };
-            outcome(vk.verify(data, &sig).is_ok())
-        }
-        EcdsaPublicKey::NistP384(_) => {
-            let vk = match p384::ecdsa::VerifyingKey::from_sec1_bytes(key.as_sec1_bytes()) {
-                Ok(vk) => vk,
-                Err(_) => return VerifyOutcome::BadSignature,
-            };
-            let sig = match p384::ecdsa::Signature::try_from(signature) {
-                Ok(sig) => sig,
-                Err(_) => return VerifyOutcome::BadSignature,
-            };
-            outcome(vk.verify(data, &sig).is_ok())
-        }
-        EcdsaPublicKey::NistP521(_) => {
-            let vk = match p521::ecdsa::VerifyingKey::from_sec1_bytes(key.as_sec1_bytes()) {
-                Ok(vk) => vk,
-                Err(_) => return VerifyOutcome::BadSignature,
-            };
-            let sig = match p521::ecdsa::Signature::try_from(signature) {
-                Ok(sig) => sig,
-                Err(_) => return VerifyOutcome::BadSignature,
-            };
-            outcome(vk.verify(data, &sig).is_ok())
-        }
+        EcdsaPublicKey::NistP256(_) => verify_curve!(p256),
+        EcdsaPublicKey::NistP384(_) => verify_curve!(p384),
+        EcdsaPublicKey::NistP521(_) => verify_curve!(p521),
     }
 }
 

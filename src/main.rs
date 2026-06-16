@@ -20,6 +20,11 @@ use stress_ssh_agent::cli::{format_list, select, Args, IdentityInfo, SelectError
 use stress_ssh_agent::metrics::WorkerStats;
 use stress_ssh_agent::worker::run_worker;
 
+/// How long to wait for workers to finish after the deadline before abandoning
+/// them. A worker blocked inside a hung `sign` cannot observe the stop flag, so
+/// without this bound a single hung agent would make the tool hang forever.
+const JOIN_GRACE: Duration = Duration::from_secs(5);
+
 #[tokio::main]
 async fn main() -> ExitCode {
     match run().await {
@@ -71,12 +76,12 @@ async fn run() -> Result<ExitCode, String> {
     // Select the target key set.
     let selected: Vec<PublicKey> = match select(&infos, &args) {
         Ok(keys) => keys,
-        Err(SelectError::NoMatch(q)) => {
-            eprintln!("error: no supported identity matches --key {q:?}");
+        Err(e @ SelectError::NoMatch(_)) => {
+            eprintln!("error: {e}");
             return Ok(ExitCode::FAILURE);
         }
-        Err(SelectError::EmptySupported) => {
-            eprintln!("error: no supported identities found in the agent");
+        Err(e @ SelectError::EmptySupported) => {
+            eprintln!("error: {e}");
             if !infos.is_empty() {
                 eprintln!("skipped identities:");
                 eprint!("{}", format_list(&infos));
@@ -105,16 +110,18 @@ async fn run() -> Result<ExitCode, String> {
     let start = Instant::now();
     let deadline = start + Duration::from_secs(args.timeout);
 
-    // Spawn workers, round-robin over the selected keys.
+    // Spawn workers. Each worker rotates round-robin through the full selected
+    // key set, so every key is exercised even with a single worker (`-p 1
+    // --all`).
     let mut handles = Vec::with_capacity(args.parallel);
-    for i in 0..args.parallel {
-        let key = selected[i % selected.len()].clone();
+    for _ in 0..args.parallel {
+        let keys = selected.clone();
         let sock = sock.clone();
         let reconnect = args.reconnect;
         let stop = stop.clone();
         let ops = ops.clone();
         handles.push(tokio::task::spawn_blocking(move || {
-            run_worker(sock, key, reconnect, deadline, stop, ops)
+            run_worker(sock, keys, reconnect, deadline, stop, ops)
         }));
     }
 
@@ -131,12 +138,21 @@ async fn run() -> Result<ExitCode, String> {
     // ~1Hz progress line to stderr until the run stops.
     progress_loop(&stop, &ops, start, deadline).await;
 
-    // Join workers and merge their stats.
+    // Join workers and merge their stats. The `ssh-agent-client-rs` client is
+    // blocking and the stop flag is only checked at the top of each loop, so a
+    // worker stuck inside a hung `sign` cannot observe the deadline. Bound the
+    // joins so the tool still terminates and reports; a worker that is still
+    // mid-sign past the grace period is abandoned (its in-flight op is lost).
     let mut aggregate = WorkerStats::new();
     for handle in handles {
-        match handle.await {
-            Ok(stats) => aggregate.merge(&stats),
-            Err(e) => eprintln!("warning: worker task failed: {e}"),
+        match tokio::time::timeout(JOIN_GRACE, handle).await {
+            Ok(Ok(stats)) => aggregate.merge(&stats),
+            Ok(Err(e)) => eprintln!("warning: worker task failed: {e}"),
+            Err(_) => eprintln!(
+                "warning: worker did not finish within {}s of the deadline \
+                 (agent likely hung mid-sign); abandoning it",
+                JOIN_GRACE.as_secs()
+            ),
         }
     }
 
