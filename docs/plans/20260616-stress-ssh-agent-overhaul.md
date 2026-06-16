@@ -211,13 +211,13 @@ histogram and tallying outcomes; `main` merges results and prints the report.
 **Files:**
 - Modify: `src/worker.rs`
 
-- [ ] define a `run_worker(sock, public_key, reconnect: bool, deadline/stop, &mut WorkerStats)` that loops until stopped
-- [ ] per iteration: 32 random bytes → time `sign` (Instant) → `verify_signature` → `stats.record(...)`; bump a shared `Arc<AtomicU64>` op counter (read by main's progress line); check stop flag at loop top
-- [ ] connection model: persistent = connect once, reuse `Client`; `--reconnect` = `Client::connect` per sign; map connect/sign errors → `SignError`
-- [ ] RSA hash is selected in `verify.rs` from `signature.algorithm()`; no flag to set here — `ssh-agent-client-rs 1.1.2` `sign` has no algorithm argument, so RSA keys return `ssh-rsa`/SHA-1 (verified, since SHA-1 is supported)
-- [ ] run each worker as a `spawn_blocking` closure; signing+verification happen on the same blocking thread
-- [ ] (worker loop needs a live agent, so it is exercised via the manual smoke run, not unit tests; keep logic thin and delegate verification to the tested `verify.rs`)
-- [ ] `cargo x ci` passes (compiles, clippy clean)
+- [x] define a `run_worker(sock, public_key, reconnect: bool, deadline/stop, &mut WorkerStats)` that loops until stopped
+- [x] per iteration: 32 random bytes → time `sign` (Instant) → `verify_signature` → `stats.record(...)`; bump a shared `Arc<AtomicU64>` op counter (read by main's progress line); check stop flag at loop top
+- [x] connection model: persistent = connect once, reuse `Client`; `--reconnect` = `Client::connect` per sign; map connect/sign errors → `SignError`
+- [x] RSA hash is selected in `verify.rs` from `signature.algorithm()`; no flag to set here — `ssh-agent-client-rs 1.1.2` `sign` has no algorithm argument, so RSA keys return `ssh-rsa`/SHA-1 (verified, since SHA-1 is supported)
+- [x] run each worker as a `spawn_blocking` closure; signing+verification happen on the same blocking thread
+- [x] (worker loop needs a live agent, so it is exercised via the manual smoke run, not unit tests; keep logic thin and delegate verification to the tested `verify.rs`)
+- [x] `cargo x ci` passes (compiles, clippy clean)
 
 ### Task 6: Wire `main.rs` + stop signal + reporting
 
