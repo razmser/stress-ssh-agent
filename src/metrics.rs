@@ -20,6 +20,9 @@ pub struct WorkerStats {
     pub verified: u64,
     pub bad_signature: u64,
     pub sign_error: u64,
+    /// Agent returned a signature whose algorithm we cannot verify. Counted as
+    /// a failure (it is an unverified operation), not silently dropped.
+    pub unsupported: u64,
 }
 
 impl Default for WorkerStats {
@@ -39,16 +42,20 @@ impl WorkerStats {
             verified: 0,
             bad_signature: 0,
             sign_error: 0,
+            unsupported: 0,
         }
     }
 
     /// Record one operation's outcome and sign latency.
     ///
     /// Latency is recorded for every attempt that produced a signature
-    /// (`Verified` / `BadSignature`). `SignError` has no meaningful sign
-    /// latency (signing failed or never returned), so it is counted but not
-    /// recorded into the histogram. `Unsupported` should not occur at runtime
-    /// (such keys are filtered before workers start) and is ignored harmlessly.
+    /// (`Verified` / `BadSignature` / `Unsupported`). `SignError` has no
+    /// meaningful sign latency (signing failed or never returned), so it is
+    /// counted but not recorded into the histogram. `Unsupported` is rare at
+    /// runtime (most unhandled key types are filtered before workers start) but
+    /// can still arise — e.g. an RSA key whose agent response carries an
+    /// unexpected signature algorithm — so it is counted as a failure rather
+    /// than dropped, otherwise such unverified ops could let a run exit 0.
     pub fn record(&mut self, outcome: &VerifyOutcome, sign_latency: Duration) {
         match outcome {
             VerifyOutcome::Verified => {
@@ -62,7 +69,10 @@ impl WorkerStats {
             VerifyOutcome::SignError(_) => {
                 self.sign_error += 1;
             }
-            VerifyOutcome::Unsupported(_) => {}
+            VerifyOutcome::Unsupported(_) => {
+                self.unsupported += 1;
+                self.record_latency(sign_latency);
+            }
         }
     }
 
@@ -80,19 +90,21 @@ impl WorkerStats {
         self.verified += other.verified;
         self.bad_signature += other.bad_signature;
         self.sign_error += other.sign_error;
+        self.unsupported += other.unsupported;
         self.hist
             .add(&other.hist)
             .expect("histograms share identical bounds");
     }
 
-    /// Whether the run should exit with a non-zero code.
+    /// Whether the run should exit with a non-zero code. Any bad signature,
+    /// sign error, or unsupported (unverified) outcome is a failure.
     pub fn should_exit_nonzero(&self) -> bool {
-        self.bad_signature + self.sign_error > 0
+        self.bad_signature + self.sign_error + self.unsupported > 0
     }
 
     /// Total completed sign attempts (everything we counted).
     fn total_ops(&self) -> u64 {
-        self.verified + self.bad_signature + self.sign_error
+        self.verified + self.bad_signature + self.sign_error + self.unsupported
     }
 
     /// Convert a microsecond histogram value to milliseconds.
@@ -129,6 +141,7 @@ impl WorkerStats {
         let _ = writeln!(out, "  verified:      {}", self.verified);
         let _ = writeln!(out, "  bad signature: {}", self.bad_signature);
         let _ = writeln!(out, "  sign error:    {}", self.sign_error);
+        let _ = writeln!(out, "  unsupported:   {}", self.unsupported);
         let _ = writeln!(out, "  latency (ms):");
         let _ = writeln!(out, "    p50:   {p50:.3}");
         let _ = writeln!(out, "    p90:   {p90:.3}");
@@ -159,8 +172,10 @@ mod tests {
         assert_eq!(s.verified, 2);
         assert_eq!(s.bad_signature, 1);
         assert_eq!(s.sign_error, 1);
-        // Verified (2) + BadSignature (1) recorded latency; SignError/Unsupported did not.
-        assert_eq!(s.hist.len(), 3);
+        assert_eq!(s.unsupported, 1);
+        // Verified (2) + BadSignature (1) + Unsupported (1) recorded latency;
+        // SignError did not.
+        assert_eq!(s.hist.len(), 4);
     }
 
     #[test]
@@ -194,6 +209,7 @@ mod tests {
         b.record(&VerifyOutcome::Verified, micros(3000));
         b.record(&VerifyOutcome::Verified, micros(4000));
         b.record(&VerifyOutcome::SignError("e".into()), micros(0));
+        b.record(&VerifyOutcome::Unsupported("u".into()), micros(500));
 
         let a_hist_count = a.hist.len();
         let b_hist_count = b.hist.len();
@@ -203,6 +219,7 @@ mod tests {
         assert_eq!(a.verified, 3);
         assert_eq!(a.bad_signature, 1);
         assert_eq!(a.sign_error, 2);
+        assert_eq!(a.unsupported, 1);
         assert_eq!(a.hist.len(), a_hist_count + b_hist_count);
     }
 
@@ -223,6 +240,7 @@ mod tests {
         assert!(report.contains("verified:      100"));
         assert!(report.contains("bad signature: 1"));
         assert!(report.contains("sign error:    1"));
+        assert!(report.contains("unsupported:   0"));
         assert!(report.contains("total ops:     102"));
         // 102 ops over 10s ≈ 10.20 ops/s.
         assert!(report.contains("10.20 ops/s"));
@@ -257,5 +275,10 @@ mod tests {
         let mut err = WorkerStats::new();
         err.record(&VerifyOutcome::SignError("x".into()), Duration::ZERO);
         assert!(err.should_exit_nonzero());
+
+        // An unsupported (unverified) outcome is also a failure.
+        let mut uns = WorkerStats::new();
+        uns.record(&VerifyOutcome::Unsupported("rsa-weird".into()), micros(100));
+        assert!(uns.should_exit_nonzero());
     }
 }

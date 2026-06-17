@@ -27,7 +27,7 @@ stress-ssh-agent --all                 # all supported identities, every worker 
 stress-ssh-agent --reconnect           # fresh connection per sign (default: persistent per worker)
 ```
 
-Exit codes: `0` when every signature verified; `1` if any bad signature or sign error occurred, or if no usable identity was found.
+Exit codes: `0` when every signature verified; `1` if any bad signature, sign error, or unsupported (unverified) outcome occurred, if a worker was abandoned on the join-timeout (hung agent), or if no usable identity was found. The process force-exits via `std::process::exit` after the bounded worker joins so an abandoned blocking worker cannot stall runtime shutdown.
 
 ## Architecture
 

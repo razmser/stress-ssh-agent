@@ -97,6 +97,7 @@ Results:
   verified:      142318
   bad signature: 0
   sign error:    0
+  unsupported:   0
   latency (ms):
     p50:   1.612
     p90:   2.487
@@ -111,8 +112,8 @@ final report go to stderr and stdout respectively.
 ## Exit Codes
 
 - `0` — every signature verified.
-- `1` — any bad signature or sign error occurred, or no usable identity was
-  found in the agent.
+- `1` — any bad signature, sign error, or unsupported (unverified) outcome
+  occurred, or no usable identity was found in the agent.
 
 ## How It Works
 

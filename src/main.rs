@@ -169,7 +169,20 @@ async fn run() -> Result<ExitCode, String> {
         aggregate.report(&algorithm_desc, args.parallel, args.reconnect, elapsed)
     );
 
-    if aggregate.should_exit_nonzero() || any_worker_abandoned {
+    if any_worker_abandoned {
+        // An abandoned worker is still blocked inside `sign` on Tokio's blocking
+        // pool. Returning here would drop the runtime, and the multi-threaded
+        // runtime's shutdown *waits* for blocking tasks to finish — re-introducing
+        // the exact hang JOIN_GRACE exists to bound. `process::exit` terminates
+        // the process immediately without that wait. It skips buffer flushes, so
+        // flush stdout (the report) first. An abandoned worker always means
+        // failure, so the code is 1.
+        use std::io::Write as _;
+        let _ = std::io::stdout().flush();
+        std::process::exit(1);
+    }
+
+    if aggregate.should_exit_nonzero() {
         Ok(ExitCode::FAILURE)
     } else {
         Ok(ExitCode::SUCCESS)
