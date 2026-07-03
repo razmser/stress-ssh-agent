@@ -36,7 +36,7 @@ A library (`src/lib.rs`) plus a thin binary (`src/main.rs`) that stress-tests an
 - `verify.rs` — `verify_signature` + `VerifyOutcome`; RustCrypto-based verification.
 - `cli.rs` — `Args` (clap) plus identity classification and selection (kept free of live I/O so it is unit-testable).
 - `worker.rs` — the closed-loop signing worker.
-- `metrics.rs` — `WorkerStats`: hdrhistogram latency stats, counters, merge, and the report formatter.
+- `metrics.rs` — `WorkerStats`: per-key hdrhistogram latency stats and counters (indexed by position in the selected key set), key-by-key merge, and the report formatter (aggregate section plus a per-key breakdown when more than one key was exercised).
 
 Integration tests in `tests/verify.rs` exercise the public `verify_signature` API with in-process keypairs across all supported algorithms (including the P-521 regression and negative/edge cases); no live agent.
 

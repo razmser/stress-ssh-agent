@@ -12,7 +12,9 @@ fuzzer and a latency/throughput benchmark.
   (`p256`/`p384`/`p521`, `ed25519-dalek`, `rsa`), so a buggy or malicious agent
   that returns a bad signature is caught.
 - **Latency metrics**: HDR-histogram percentiles (p50/p90/p99/p99.9/max) plus
-  ops/s and separate `bad signature` vs `sign error` counters.
+  ops/s and separate `bad signature` vs `sign error` counters. When more than
+  one key is exercised (`--all`), the report adds a per-key breakdown so
+  algorithms with different latency profiles aren't hidden in one histogram.
 - **Identity selection**: pick one key by fingerprint/comment, round-robin all
   supported keys, or just list what the agent holds.
 - **Supported key types**:
@@ -61,7 +63,8 @@ stress-ssh-agent --parallel 10 --timeout 120   # -p / -t
 - `--key <FINGERPRINT>` — select one identity by SHA256 fingerprint or by comment
   (substring match).
 - `--all` — use all supported identities; every worker cycles through them
-  round-robin (one key per iteration).
+  round-robin (one key per iteration). The final report includes a per-key
+  breakdown (counts + latency percentiles per key).
 - `--list` — enumerate identities (algorithm, fingerprint, comment, supported or
   skip reason) and exit.
 
@@ -106,6 +109,19 @@ Results:
     max:   18.350
 ```
 
+With `--all` and more than one selected key, a `per-key:` section follows the
+aggregate latency block, one entry per key:
+
+```
+  per-key:
+    ssh-ed25519 SHA256:aaa... (alice@host)
+      ops: 71200  verified: 71200  bad signature: 0  sign error: 0  unsupported: 0
+      latency (ms): p50 1.598  p90 2.441  p99 4.812  p99.9 9.500  max 17.902
+    ecdsa-sha2-nistp256 SHA256:bbb... (bob@host)
+      ops: 71118  verified: 71118  bad signature: 0  sign error: 0  unsupported: 0
+      latency (ms): p50 1.702  p90 2.633  p99 5.104  p99.9 10.221  max 19.480
+```
+
 A ~1Hz progress line is printed to stderr during the run; the run header and
 final report go to stderr and stdout respectively.
 
@@ -129,4 +145,6 @@ final report go to stderr and stdout respectively.
    connection (or reconnecting per sign with `--reconnect`).
 5. Re-verifies each returned signature out-of-band with RustCrypto and records
    the sign latency and outcome into a per-worker HDR histogram.
-6. Merges the per-worker stats at the end and prints the report.
+6. Merges the per-worker stats at the end (key by key) and prints the report:
+   aggregate totals and percentiles, plus a per-key breakdown when more than
+   one key was exercised.

@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 
 use clap::Parser;
 use ssh_agent_client_rs::{Client, Identity};
-use ssh_key::PublicKey;
+use ssh_key::{HashAlg, PublicKey};
 
 use stress_ssh_agent::cli::{format_list, select, Args, IdentityInfo, SelectError};
 use stress_ssh_agent::metrics::WorkerStats;
@@ -91,6 +91,7 @@ async fn run() -> Result<ExitCode, String> {
     };
 
     let algorithm_desc = describe_algorithm(&selected, args.all);
+    let key_labels: Vec<String> = selected.iter().map(key_label).collect();
 
     // Run header.
     let conn_mode = if args.reconnect {
@@ -143,7 +144,7 @@ async fn run() -> Result<ExitCode, String> {
     // worker stuck inside a hung `sign` cannot observe the deadline. Bound the
     // joins so the tool still terminates and reports; a worker that is still
     // mid-sign past the grace period is abandoned (its in-flight op is lost).
-    let mut aggregate = WorkerStats::new();
+    let mut aggregate = WorkerStats::new(selected.len());
     let mut any_worker_abandoned = false;
     for handle in handles {
         match tokio::time::timeout(JOIN_GRACE, handle).await {
@@ -166,7 +167,13 @@ async fn run() -> Result<ExitCode, String> {
     let elapsed = start.elapsed();
     println!(
         "{}",
-        aggregate.report(&algorithm_desc, args.parallel, args.reconnect, elapsed)
+        aggregate.report(
+            &algorithm_desc,
+            &key_labels,
+            args.parallel,
+            args.reconnect,
+            elapsed
+        )
     );
 
     if any_worker_abandoned {
@@ -198,6 +205,25 @@ fn describe_algorithm(selected: &[PublicKey], all: bool) -> String {
             .first()
             .map(|k| k.algorithm().to_string())
             .unwrap_or_else(|| "unknown".to_string())
+    }
+}
+
+/// Label one selected key for the per-key report section: algorithm,
+/// fingerprint, and comment (when non-empty).
+fn key_label(key: &PublicKey) -> String {
+    let comment = key.comment();
+    if comment.is_empty() {
+        format!(
+            "{} {}",
+            key.algorithm(),
+            key.fingerprint(HashAlg::default())
+        )
+    } else {
+        format!(
+            "{} {} ({comment})",
+            key.algorithm(),
+            key.fingerprint(HashAlg::default())
+        )
     }
 }
 

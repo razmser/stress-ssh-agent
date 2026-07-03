@@ -69,7 +69,7 @@ pub fn run_worker(
     stop: Arc<AtomicBool>,
     ops_counter: Arc<AtomicU64>,
 ) -> WorkerStats {
-    let mut stats = WorkerStats::new();
+    let mut stats = WorkerStats::new(keys.len());
     let mut rng = rand::thread_rng();
 
     // Pre-build one Identity per key so the per-iteration hot loop does not
@@ -86,9 +86,11 @@ pub fn run_worker(
             break;
         }
 
-        // Round-robin to the next key for this iteration.
-        let public_key = &keys[key_idx];
-        let identity = &identities[key_idx];
+        // Round-robin to the next key for this iteration. Outcomes are
+        // recorded against `idx` so stats stay per-key.
+        let idx = key_idx;
+        let public_key = &keys[idx];
+        let identity = &identities[idx];
         key_idx = (key_idx + 1) % keys.len();
 
         let mut data = [0u8; SIGN_BYTES];
@@ -104,6 +106,7 @@ pub fn run_worker(
                 }
                 Err(e) => {
                     stats.record(
+                        idx,
                         &VerifyOutcome::SignError(format!("connect: {e}")),
                         std::time::Duration::ZERO,
                     );
@@ -118,6 +121,7 @@ pub fn run_worker(
                     Ok(c) => persistent = Some(c),
                     Err(e) => {
                         stats.record(
+                            idx,
                             &VerifyOutcome::SignError(format!("reconnect: {e}")),
                             std::time::Duration::ZERO,
                         );
@@ -138,10 +142,10 @@ pub fn run_worker(
         match sign_result {
             Ok(sig) => {
                 let outcome = verify_signature(public_key, &data, &sig);
-                stats.record(&outcome, elapsed);
+                stats.record(idx, &outcome, elapsed);
             }
             Err(e) => {
-                stats.record(&VerifyOutcome::SignError(e.to_string()), elapsed);
+                stats.record(idx, &VerifyOutcome::SignError(e.to_string()), elapsed);
                 // In persistent mode a sign error may mean a dead connection;
                 // drop it so the next iteration reconnects.
                 if !reconnect {
