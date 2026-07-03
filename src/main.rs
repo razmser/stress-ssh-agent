@@ -103,13 +103,13 @@ async fn run() -> Result<ExitCode, String> {
     eprintln!("  algorithm:   {algorithm_desc}");
     eprintln!("  workers:     {}", args.parallel);
     eprintln!("  connection:  {conn_mode}");
-    eprintln!("  duration:    {}s", args.timeout);
+    eprintln!("  duration:    {}s", args.duration);
 
     // Shared run state.
     let stop = Arc::new(AtomicBool::new(false));
     let ops = Arc::new(AtomicU64::new(0));
     let start = Instant::now();
-    let deadline = start + Duration::from_secs(args.timeout);
+    let deadline = start + Duration::from_secs(args.duration);
 
     // Spawn workers. Each worker rotates round-robin through the full selected
     // key set, so every key is exercised even with a single worker (`-p 1

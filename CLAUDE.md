@@ -20,7 +20,7 @@ The crate is a library + thin binary: the package is `stress-ssh-agent`, the lib
 Requires `SSH_AUTH_SOCK` set and at least one supported identity loaded in the ssh-agent. If `SSH_AUTH_SOCK` is unset, `main` prints a clear error and exits non-zero (no opaque panic).
 
 ```bash
-stress-ssh-agent -p 10 -t 120          # 10 workers, 120s (-p/--parallel, -t/--timeout; defaults 1, 60)
+stress-ssh-agent -p 10 -d 120          # 10 workers, 120s (-p/--parallel, -d/--duration; defaults 1, 60)
 stress-ssh-agent --list                # enumerate identities and exit 0
 stress-ssh-agent --key <FINGERPRINT>   # one identity by SHA256 fingerprint or comment substring
 stress-ssh-agent --all                 # all supported identities, every worker cycles through them

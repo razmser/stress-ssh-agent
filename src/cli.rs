@@ -23,8 +23,8 @@ pub struct Args {
     pub parallel: usize,
 
     /// Run duration in seconds.
-    #[arg(short = 't', long = "timeout", default_value_t = 60)]
-    pub timeout: u64,
+    #[arg(short = 'd', long = "duration", default_value_t = 60)]
+    pub duration: u64,
 
     /// Open a fresh connection per sign instead of reusing one.
     #[arg(long = "reconnect", default_value_t = false)]

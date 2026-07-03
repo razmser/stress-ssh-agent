@@ -7,7 +7,7 @@ fuzzer and a latency/throughput benchmark.
 ## Features
 
 - **Closed-loop load**: N persistent workers signing random data in a tight loop
-  until a timeout, instead of bursty batches.
+  for a fixed duration, instead of bursty batches.
 - **Out-of-band verification**: every signature is re-verified with RustCrypto
   (`p256`/`p384`/`p521`, `ed25519-dalek`, `rsa`), so a buggy or malicious agent
   that returns a bad signature is caught.
@@ -51,13 +51,13 @@ stress-ssh-agent
 Stress test with 10 parallel workers for 120 seconds:
 
 ```bash
-stress-ssh-agent --parallel 10 --timeout 120   # -p / -t
+stress-ssh-agent --parallel 10 --duration 120   # -p / -d
 ```
 
 ### Flags
 
 - `-p, --parallel <N>` — number of parallel signing workers (default `1`).
-- `-t, --timeout <SECS>` — run duration in seconds (default `60`).
+- `-d, --duration <SECS>` — run duration in seconds (default `60`).
 - `--reconnect` — open a fresh connection per sign (measures connection-churn
   cost) instead of the default persistent connection per worker.
 - `--key <FINGERPRINT>` — select one identity by SHA256 fingerprint or by comment
@@ -73,7 +73,7 @@ Examples:
 ```bash
 stress-ssh-agent --list
 stress-ssh-agent --key SHA256:abc123... -p 8
-stress-ssh-agent --all -p 16 -t 30
+stress-ssh-agent --all -p 16 -d 30
 stress-ssh-agent --reconnect -p 4
 ```
 

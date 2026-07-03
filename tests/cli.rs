@@ -13,7 +13,7 @@ use stress_ssh_agent::cli::{
 fn args() -> Args {
     Args {
         parallel: 1,
-        timeout: 60,
+        duration: 60,
         reconnect: false,
         key: None,
         all: false,
@@ -99,6 +99,14 @@ fn parallel_zero_is_rejected() {
     // A positive value is accepted.
     let ok = Args::try_parse_from(["prog", "--parallel", "4"]).expect("parse");
     assert_eq!(ok.parallel, 4);
+}
+
+#[test]
+fn duration_flag_parses() {
+    for argv in [["prog", "--duration", "30"], ["prog", "-d", "30"]] {
+        let parsed = Args::try_parse_from(argv).expect("parse");
+        assert_eq!(parsed.duration, 30, "argv: {argv:?}");
+    }
 }
 
 #[test]
