@@ -2,18 +2,22 @@
 //!
 //! A worker is a synchronous function meant to run inside
 //! [`tokio::task::spawn_blocking`] (the `ssh-agent-client-rs` client is
-//! blocking). It owns one assigned [`ssh_key::PublicKey`] and — in persistent
-//! mode — one reused [`Client`]. It loops until a shared stop flag flips or the
-//! deadline passes, signing 32 random bytes each iteration, timing the sign
-//! call, re-verifying the signature out-of-band via [`verify_signature`], and
-//! tallying the outcome into a local [`WorkerStats`] that is returned for the
-//! end-of-run merge. The only shared state touched in the hot loop is the
-//! atomic op counter (drives main's ~1Hz progress line) and the atomic stop
-//! flag — `WorkerStats` is worker-local.
+//! blocking). In persistent mode it owns one reused [`Client`]. It loops until
+//! a shared stop flag flips or the deadline passes, signing 32 random bytes
+//! each iteration and timing the sign call. Verification does NOT happen here:
+//! each successful sign is handed to the verifier pool as a
+//! [`VerifyJob`](crate::verifier::VerifyJob), so client-side verify CPU
+//! (nontrivial for P-521/RSA) never throttles the sign loop. The worker's own
+//! [`WorkerStats`] therefore only ever holds `SignError`s; verified outcomes
+//! are tallied by the pool and merged with these at the end of the run. The
+//! only shared state touched in the hot loop is the atomic op counter (drives
+//! main's ~1Hz progress line), the atomic stop flag, and the bounded job
+//! channel.
 //!
 //! RSA reality (informational; nothing to configure here):
-//! `ssh-agent-client-rs 1.1.2`'s `sign` exposes no algorithm flag, so we cannot
-//! request `rsa-sha2-256`/`512`. So if an agent signs an RSA key with `ssh-rsa`
+//! `ssh-agent-client-rs 1.1.2`'s `sign` exposes no algorithm flag; it always
+//! sends `SSH_AGENT_RSA_SHA2_512` for RSA keys, so a conforming agent returns
+//! `rsa-sha2-512`. If an agent ignores the flag and signs with `ssh-rsa`
 //! (SHA-1), we expect — inferred from `ssh-key` 0.6.7's decode constraints, not
 //! observed against a live agent — the client's `sign` to error at the decode
 //! layer: `ssh-key`'s `Signature::decode` rejects `Algorithm::Rsa { hash: None }`,
@@ -22,16 +26,18 @@
 //! selection lives in `verify.rs`; there is no flag to set here.
 
 use crate::metrics::WorkerStats;
-use crate::verify::{verify_signature, VerifyOutcome};
+use crate::verifier::VerifyJob;
+use crate::verify::VerifyOutcome;
 use rand::RngCore;
 use ssh_agent_client_rs::{Client, Identity};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::time::Instant;
 
 /// Number of random bytes signed per iteration.
-const SIGN_BYTES: usize = 32;
+pub const SIGN_BYTES: usize = 32;
 
 /// Whether the worker loop should stop, given the stop flag and the deadline.
 ///
@@ -44,7 +50,9 @@ fn should_stop(stop: &AtomicBool, deadline: Instant, now: Instant) -> bool {
 ///
 /// Designed to be called inside `tokio::task::spawn_blocking`. Takes owned
 /// arguments so the closure is `'static`. Returns the worker's local
-/// [`WorkerStats`] for the caller to merge.
+/// [`WorkerStats`] (holding only `SignError`s; successful signs are verified
+/// and tallied by the verifier pool fed through `jobs`) for the caller to
+/// merge.
 ///
 /// `keys` is the full set of keys this worker should exercise; the worker
 /// rotates through them round-robin, one per iteration. This guarantees every
@@ -68,6 +76,7 @@ pub fn run_worker(
     deadline: Instant,
     stop: Arc<AtomicBool>,
     ops_counter: Arc<AtomicU64>,
+    jobs: SyncSender<VerifyJob>,
 ) -> WorkerStats {
     let mut stats = WorkerStats::new(keys.len());
     let mut rng = rand::thread_rng();
@@ -89,7 +98,6 @@ pub fn run_worker(
         // Round-robin to the next key for this iteration. Outcomes are
         // recorded against `idx` so stats stay per-key.
         let idx = key_idx;
-        let public_key = &keys[idx];
         let identity = &identities[idx];
         key_idx = (key_idx + 1) % keys.len();
 
@@ -141,8 +149,16 @@ pub fn run_worker(
 
         match sign_result {
             Ok(sig) => {
-                let outcome = verify_signature(public_key, &data, &sig);
-                stats.record(idx, &outcome, elapsed);
+                // Hand off to the verifier pool; a full queue blocks here
+                // (bounded memory) but that only happens if signing outpaces
+                // every verifier core combined. A send error means the pool is
+                // gone, which only happens when the run is being torn down.
+                let _ = jobs.send(VerifyJob::Signed {
+                    key_idx: idx,
+                    data,
+                    signature: sig,
+                    sign_latency: elapsed,
+                });
             }
             Err(e) => {
                 stats.record(idx, &VerifyOutcome::SignError(e.to_string()), elapsed);

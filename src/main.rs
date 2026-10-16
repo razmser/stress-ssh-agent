@@ -9,7 +9,7 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use clap::Parser;
@@ -18,12 +18,19 @@ use ssh_key::{HashAlg, PublicKey};
 
 use stress_ssh_agent::cli::{format_list, select, Args, IdentityInfo, SelectError};
 use stress_ssh_agent::metrics::WorkerStats;
+use stress_ssh_agent::verifier::{run_verifier, VerifyJob};
 use stress_ssh_agent::worker::run_worker;
 
 /// How long to wait for workers to finish after the deadline before abandoning
 /// them. A worker blocked inside a hung `sign` cannot observe the stop flag, so
 /// without this bound a single hung agent would make the tool hang forever.
 const JOIN_GRACE: Duration = Duration::from_secs(5);
+
+/// Bound on the worker → verifier job queue. Verification runs off the signing
+/// path, so a backlog can build if verification is momentarily slower than
+/// signing; the bound caps its memory. A worker only blocks on `send` if the
+/// queue is full — i.e. signing outpaces every verifier core combined.
+const VERIFY_QUEUE_CAP: usize = 64 * 1024;
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -99,9 +106,17 @@ async fn run() -> Result<ExitCode, String> {
     } else {
         "persistent"
     };
+    // Verifier pool size: one thread per available core. Verification runs off
+    // the signing path so verify CPU cannot throttle the sign rate; the pool
+    // just needs enough parallelism to keep up with the agent overall.
+    let n_verifiers = std::thread::available_parallelism()
+        .map(usize::from)
+        .unwrap_or(4);
+
     eprintln!("stress-ssh-agent:");
     eprintln!("  algorithm:   {algorithm_desc}");
     eprintln!("  workers:     {}", args.parallel);
+    eprintln!("  verifiers:   {n_verifiers}");
     eprintln!("  connection:  {conn_mode}");
     eprintln!("  duration:    {}s", args.duration);
 
@@ -110,6 +125,22 @@ async fn run() -> Result<ExitCode, String> {
     let ops = Arc::new(AtomicU64::new(0));
     let start = Instant::now();
     let deadline = start + Duration::from_secs(args.duration);
+
+    // Spawn the verifier pool, all draining one shared job queue. Verifiers are
+    // plain OS threads, not `spawn_blocking`, so they never take blocking-pool
+    // slots away from the signing workers.
+    let (jobs_tx, jobs_rx) = mpsc::sync_channel::<VerifyJob>(VERIFY_QUEUE_CAP);
+    let jobs_rx = Arc::new(Mutex::new(jobs_rx));
+    let verifier_keys = Arc::new(selected.clone());
+    let mut verifier_handles = Vec::with_capacity(n_verifiers);
+    for _ in 0..n_verifiers {
+        let keys = verifier_keys.clone();
+        let rx = jobs_rx.clone();
+        verifier_handles.push(std::thread::spawn(move || run_verifier(keys, rx)));
+    }
+    // Only the verifiers may hold the receiver: if they all die, it is dropped
+    // and every `send` errors instead of blocking forever on a full queue.
+    drop(jobs_rx);
 
     // Spawn workers. Each worker rotates round-robin through the full selected
     // key set, so every key is exercised even with a single worker (`-p 1
@@ -121,8 +152,9 @@ async fn run() -> Result<ExitCode, String> {
         let reconnect = args.reconnect;
         let stop = stop.clone();
         let ops = ops.clone();
+        let jobs = jobs_tx.clone();
         handles.push(tokio::task::spawn_blocking(move || {
-            run_worker(sock, keys, reconnect, deadline, stop, ops)
+            run_worker(sock, keys, reconnect, deadline, stop, ops, jobs)
         }));
     }
 
@@ -164,7 +196,30 @@ async fn run() -> Result<ExitCode, String> {
         }
     }
 
+    // The signing phase is over; measure its duration before draining the
+    // verifier backlog so ops/s is not diluted by drain time.
     let elapsed = start.elapsed();
+
+    // Stop the verifier pool: one Shutdown sentinel per verifier, queued after
+    // every job the joined workers sent, so the pool drains the backlog before
+    // exiting. Sentinels (not just dropping `jobs_tx`) are required because an
+    // abandoned worker never drops its sender clone. Verifiers are pure CPU
+    // with a bounded backlog, so their joins need no timeout.
+    let mut verifier_failed = false;
+    for _ in 0..n_verifiers {
+        let _ = jobs_tx.send(VerifyJob::Shutdown);
+    }
+    drop(jobs_tx);
+    for handle in verifier_handles {
+        match handle.join() {
+            Ok(stats) => aggregate.merge(&stats),
+            Err(_) => {
+                verifier_failed = true;
+                eprintln!("warning: verifier thread panicked");
+            }
+        }
+    }
+
     println!(
         "{}",
         aggregate.report(
@@ -189,7 +244,9 @@ async fn run() -> Result<ExitCode, String> {
         std::process::exit(1);
     }
 
-    if aggregate.should_exit_nonzero() {
+    // A failed verifier task means some outcomes were lost unverified, so the
+    // run cannot claim success.
+    if aggregate.should_exit_nonzero() || verifier_failed {
         Ok(ExitCode::FAILURE)
     } else {
         Ok(ExitCode::SUCCESS)

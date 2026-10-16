@@ -143,8 +143,10 @@ final report go to stderr and stdout respectively.
 4. Spawns `--parallel` closed-loop workers. Each worker signs 32 random bytes in
    a tight loop until a shared deadline/stop flag flips, reusing one persistent
    connection (or reconnecting per sign with `--reconnect`).
-5. Re-verifies each returned signature out-of-band with RustCrypto and records
-   the sign latency and outcome into a per-worker HDR histogram.
-6. Merges the per-worker stats at the end (key by key) and prints the report:
+5. Hands each returned signature to a pool of verifier threads (one per core)
+   over a bounded queue, so verify CPU stays off the sign loop. Verifiers
+   re-verify it with RustCrypto and record the sign latency and outcome into
+   HDR histograms; after the deadline the pool drains the remaining backlog.
+6. Merges the worker and verifier stats at the end (key by key) and prints the report:
    aggregate totals and percentiles, plus a per-key breakdown when more than
    one key was exercised.
