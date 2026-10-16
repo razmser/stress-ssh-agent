@@ -4,7 +4,9 @@
 //! wires them together: connect to the agent, classify/select keys, spawn one
 //! `spawn_blocking` worker per `--parallel`, arm a deadline that flips a shared
 //! stop flag, drive a ~1Hz stderr progress line off a shared op counter, then
-//! merge the per-worker stats and print the final report.
+//! merge the per-worker stats and print the final report. Successful signs are
+//! verified off the sign path by a pool of verifier threads, which drain their
+//! backlog after the workers are joined and contribute their stats to the merge.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -176,10 +178,13 @@ async fn run() -> Result<ExitCode, String> {
     // worker stuck inside a hung `sign` cannot observe the deadline. Bound the
     // joins so the tool still terminates and reports; a worker that is still
     // mid-sign past the grace period is abandoned (its in-flight op is lost).
+    // The grace period is shared by all joins, so N hung workers cost one
+    // `JOIN_GRACE` in total rather than one each.
+    let grace_end = tokio::time::Instant::now() + JOIN_GRACE;
     let mut aggregate = WorkerStats::new(selected.len());
     let mut any_worker_abandoned = false;
     for handle in handles {
-        match tokio::time::timeout(JOIN_GRACE, handle).await {
+        match tokio::time::timeout_at(grace_end, handle).await {
             Ok(Ok(stats)) => aggregate.merge(&stats),
             Ok(Err(e)) => {
                 any_worker_abandoned = true;
@@ -205,6 +210,7 @@ async fn run() -> Result<ExitCode, String> {
     // exiting. Sentinels (not just dropping `jobs_tx`) are required because an
     // abandoned worker never drops its sender clone. Verifiers are pure CPU
     // with a bounded backlog, so their joins need no timeout.
+    eprintln!("verifying remaining signatures...");
     let mut verifier_failed = false;
     for _ in 0..n_verifiers {
         let _ = jobs_tx.send(VerifyJob::Shutdown);

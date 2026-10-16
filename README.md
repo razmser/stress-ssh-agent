@@ -89,6 +89,7 @@ stress-ssh-agent --reconnect -p 4
 stress-ssh-agent:
   algorithm:   ssh-ed25519
   workers:     8
+  verifiers:   8
   connection:  persistent
   duration:    30s
 Results:
